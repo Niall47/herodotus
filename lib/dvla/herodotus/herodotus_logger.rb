@@ -1,9 +1,13 @@
 require 'securerandom'
+require 'tempfile'
 
 module DVLA
   module Herodotus
     class HerodotusLogger < Logger
       attr_accessor :system_name, :correlation_id, :main, :display_pid, :scenario_id, :prefix_colour
+      
+      @@global_buffered_logs = []
+      @@buffer_mutex = Mutex.new
 
       # Initializes the logger
       # Sets a default correlation_id and creates the formatter
@@ -18,7 +22,6 @@ module DVLA
         @prefix_colour = config.prefix_colour
 
         @correlation_id = SecureRandom.uuid[0, 8]
-        @buffered_logs = []
         set_formatter
 
         if DVLA::Herodotus.main_logger && @main
@@ -62,7 +65,12 @@ module DVLA
       %i[debug info warn error fatal].each do |log_level|
         define_method log_level do |progname = nil, buffered: false, &block|
           if buffered
-            add_log_to_buffer(log_level, progname, &block)
+            @@buffer_mutex.synchronize do
+              @@global_buffered_logs << -> {
+                set_proc_writer_scenario
+                super(progname, &block)
+              }
+            end
           else
             set_proc_writer_scenario
             super(progname, &block)
@@ -71,11 +79,12 @@ module DVLA
       end
 
       def release_buffered_logs
-        @buffered_logs.each do |log_entry|
-          set_proc_writer_scenario
-          send(log_entry[:level], log_entry[:progname], &log_entry[:block])
+        logs_to_release = nil
+        @@buffer_mutex.synchronize do
+          logs_to_release = @@global_buffered_logs.dup
+          @@global_buffered_logs.clear
         end
-        @buffered_logs.clear
+        logs_to_release.each(&:call)
       end
 
       # Sets the format of the log.
@@ -83,62 +92,50 @@ module DVLA
       def set_formatter
         self.formatter = proc do |severity, _datetime, _progname, msg|
           now = Time.now
-          components = {
-            system: @system_name,
-            date: now.strftime('%Y-%m-%d'),
-            time: now.strftime('%H:%M:%S'),
-            correlation: @correlation_id,
-            pid: (@display_pid ? Process.pid.to_s : nil),
-            level: severity,
-            separator: '-- :',
-          }
+          system = @system_name
+          date = now.strftime('%Y-%m-%d')
+          time = now.strftime('%H:%M:%S')
+          correlation = @correlation_id
+          pid = @display_pid ? Process.pid.to_s : nil
+          level = severity
+          separator = '-- :'
 
-          prefix = colourise_prefix(components)
+          prefix = case @prefix_colour
+                   # Colourise the whole prefix
+                   when Array, String
+                     bracket_content = [system, date, time, correlation, pid].compact.join(' ')
+                     colourise_text("[#{bracket_content}] #{level} #{separator} ", @prefix_colour)
+                   when Hash
+                     #   Colour each component individually and wrap in an overall colour
+                     s = @prefix_colour[:system] ? colourise_text(system, @prefix_colour[:system]) : system
+                     d = @prefix_colour[:date] ? colourise_text(date, @prefix_colour[:date]) : date
+                     t = @prefix_colour[:time] ? colourise_text(time, @prefix_colour[:time]) : time
+                     c = @prefix_colour[:correlation] ? colourise_text(correlation, @prefix_colour[:correlation]) : correlation
+                     p = pid && @prefix_colour[:pid] ? colourise_text(pid, @prefix_colour[:pid]) : pid
+                     l = @prefix_colour[:level] ? colourise_text(level, @prefix_colour[:level]) : level
+                     sep = @prefix_colour[:separator] ? colourise_text(separator, @prefix_colour[:separator]) : separator
+                     bracket_content = [s, d, t, c, p].compact.join(' ')
+                     result = "[#{bracket_content}] #{l} #{sep} "
+                     @prefix_colour[:overall] ? colourise_text(result, @prefix_colour[:overall]) : result
+                   else
+                     # No colourisation
+                     bracket_content = [system, date, time, correlation, pid].compact.join(' ')
+                     "[#{bracket_content}] #{level} #{separator} "
+                   end
+
           "#{prefix}#{msg}\n"
         end
       end
 
     private
 
-      def add_log_to_buffer(level, progname = nil, &block)
-        @buffered_logs << { level: level, progname: progname, block: block }
-      end
 
-      def colourise_prefix(components)
-        prefix = build_prefix(components)
-        return prefix unless @prefix_colour
-
-        case @prefix_colour
-        when String, Array
-          colourise_text(prefix, @prefix_colour)
-        when Hash
-          colourise_components(components)
-        else
-          raise
-        end
-      end
-
-      def colourise_components(components)
-        @prefix_colour.each do |key, colour|
-          next unless components[key] && key != :overall
-
-          components[key] = colourise_text(components[key].to_s, colour)
-        end
-
-        result = build_prefix(components)
-        @prefix_colour[:overall] ? colourise_text(result, @prefix_colour[:overall]) : result
-      end
 
       def colourise_text(text, colour_spec)
         return text unless colour_spec
 
         methods = colour_spec.is_a?(Array) ? colour_spec : colour_spec.to_s.split('.')
         methods.reduce(text) { |str, method| str.public_send(method) }
-      end
-
-      def build_prefix(components)
-        bracket_content = [components[:system], components[:date], components[:time], components[:correlation], components[:pid]].compact.join(' ')
-        "[#{bracket_content}] #{components[:level]} #{components[:separator]} "
       end
 
       def set_proc_writer_scenario

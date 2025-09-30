@@ -1,6 +1,15 @@
 require 'dvla/herodotus'
+require 'stringio'
 
 RSpec.describe DVLA::Herodotus::HerodotusLogger do
+  def capture_stdout
+    old_stdout = $stdout
+    $stdout = StringIO.new
+    yield
+    $stdout.string
+  ensure
+    $stdout = old_stdout
+  end
   let(:logger) { DVLA::Herodotus.logger('rspec') }
 
   after(:each) do
@@ -194,15 +203,20 @@ RSpec.describe DVLA::Herodotus::HerodotusLogger do
       allow(Time).to receive(:now).and_return(Time.new(2022))
       allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
 
-      logger.info('First buffered', buffered: true)
-      logger.warn('Second buffered', buffered: true)
-      logger.error('Third buffered', buffered: true)
+      output = capture_stdout do
+        logger.info('First buffered', buffered: true)
+        logger.warn('Not buffered')
+        logger.error('Second buffered', buffered: true)
+        logger.release_buffered_logs
+      end
 
-      expected_output = "[rspec 2022-01-01 00:00:00 123e4567] INFO -- : First buffered\n" +
-                       "[rspec 2022-01-01 00:00:00 123e4567] WARN -- : Second buffered\n" +
-                       "[rspec 2022-01-01 00:00:00 123e4567] ERROR -- : Third buffered\n"
+      expected_lines = [
+        "[rspec 2022-01-01 00:00:00 123e4567] WARN -- : Not buffered",
+        "[rspec 2022-01-01 00:00:00 123e4567] INFO -- : First buffered",
+        "[rspec 2022-01-01 00:00:00 123e4567] ERROR -- : Second buffered"
+      ]
 
-      expect { logger.release_buffered_logs }.to output(expected_output).to_stdout_from_any_process
+      expect(output.strip.split("\n")).to eq(expected_lines)
     end
 
     it 'clears buffered logs after releasing them' do
