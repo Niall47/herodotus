@@ -74,4 +74,24 @@ RSpec.describe String do
       expect('Test'.red.bg_yellow.reverse_colour.bold).to eq "\e[1m\e[7m\e[103m\e[31mTest\e[39m\e[49m\e[27m\e[22m"
     end
   end
+
+  describe 'prefix colour support' do
+    it 'supports dot notation for chained methods' do
+      methods = 'blue.bold'.split('.')
+      result = methods.inject('Test', &:send)
+      expect(result).to eq "\e[1m\e[34mTest\e[39m\e[22m"
+    end
+
+    it 'supports array of method names' do
+      methods = %w[red underline]
+      result = methods.inject('Test', &:send)
+      expect(result).to eq "\e[4m\e[31mTest\e[39m\e[24m"
+    end
+
+    it 'handles complex dot notation chains' do
+      methods = 'bright_green.bold.italic'.split('.')
+      result = methods.inject('Test', &:send)
+      expect(result).to eq "\e[3m\e[1m\e[92mTest\e[39m\e[22m\e[23m"
+    end
+  end
 end

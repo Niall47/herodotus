@@ -3,7 +3,7 @@ require 'securerandom'
 module DVLA
   module Herodotus
     class HerodotusLogger < Logger
-      attr_accessor :system_name, :correlation_id, :main, :display_pid, :scenario_id
+      attr_accessor :system_name, :correlation_id, :main, :display_pid, :scenario_id, :prefix_colour
 
       # Initializes the logger
       # Sets a default correlation_id and creates the formatter
@@ -13,10 +13,12 @@ module DVLA
         super(*args, **kwargs)
 
         @system_name = system_name
-        @main = config[:main]
-        @display_pid = config[:display_pid]
+        @main = config.main
+        @display_pid = config.display_pid
+        @prefix_colour = config.prefix_colour
 
         @correlation_id = SecureRandom.uuid[0, 8]
+        @buffered_logs = []
         set_formatter
 
         if DVLA::Herodotus.main_logger && @main
@@ -58,25 +60,86 @@ module DVLA
       end
 
       %i[debug info warn error fatal].each do |log_level|
-        define_method log_level do |progname = nil, &block|
-          set_proc_writer_scenario
-          super(progname, &block)
+        define_method log_level do |progname = nil, buffered: false, &block|
+          if buffered
+            add_log_to_buffer(log_level, progname, &block)
+          else
+            set_proc_writer_scenario
+            super(progname, &block)
+          end
         end
       end
 
+      def release_buffered_logs
+        @buffered_logs.each do |log_entry|
+          set_proc_writer_scenario
+          send(log_entry[:level], log_entry[:progname], &log_entry[:block])
+        end
+        @buffered_logs.clear
+      end
+
       # Sets the format of the log.
-      # Needs to be called each time correlation_id is changed after initialization in-order for the changes to take affect.
+      # Needs to be called each time correlation_id is changed after initialization in-order for the changes to take effect.
       def set_formatter
         self.formatter = proc do |severity, _datetime, _progname, msg|
-          "[#{@system_name} " \
-            "#{Time.now.strftime('%Y-%m-%d %H:%M:%S')} " \
-            "#{@correlation_id}" \
-            "#{' '.concat(Process.pid.to_s) if @display_pid}] " \
-            "#{severity} -- : #{msg}\n"
+          now = Time.now
+          components = {
+            system: @system_name,
+            date: now.strftime('%Y-%m-%d'),
+            time: now.strftime('%H:%M:%S'),
+            correlation: @correlation_id,
+            pid: (@display_pid ? Process.pid.to_s : nil),
+            level: severity,
+            separator: '-- :',
+          }
+
+          prefix = colourise_prefix(components)
+          "#{prefix}#{msg}\n"
         end
       end
 
     private
+
+      def add_log_to_buffer(level, progname = nil, &block)
+        @buffered_logs << { level: level, progname: progname, block: block }
+      end
+
+      def colourise_prefix(components)
+        prefix = build_prefix(components)
+        return prefix unless @prefix_colour
+
+        case @prefix_colour
+        when String, Array
+          colourise_text(prefix, @prefix_colour)
+        when Hash
+          colourise_components(components)
+        else
+          raise
+        end
+      end
+
+      def colourise_components(components)
+        @prefix_colour.each do |key, colour|
+          next unless components[key] && key != :overall
+
+          components[key] = colourise_text(components[key].to_s, colour)
+        end
+
+        result = build_prefix(components)
+        @prefix_colour[:overall] ? colourise_text(result, @prefix_colour[:overall]) : result
+      end
+
+      def colourise_text(text, colour_spec)
+        return text unless colour_spec
+
+        methods = colour_spec.is_a?(Array) ? colour_spec : colour_spec.to_s.split('.')
+        methods.reduce(text) { |str, method| str.public_send(method) }
+      end
+
+      def build_prefix(components)
+        bracket_content = [components[:system], components[:date], components[:time], components[:correlation], components[:pid]].compact.join(' ')
+        "[#{bracket_content}] #{components[:level]} #{components[:separator]} "
+      end
 
       def set_proc_writer_scenario
         if @logdev.dev.is_a?(DVLA::Herodotus::MultiWriter) && @logdev.dev.targets.any?(DVLA::Herodotus::ProcWriter)

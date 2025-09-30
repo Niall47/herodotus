@@ -62,6 +62,51 @@ This would result in logs in the following format:
 
 `[SystemName CurrentDate CurrentTime CorrelationId PID] Level : -- Message`
 
+#### Prefix Colourisation
+You can colourise the log prefix in several ways:
+
+**Apply colours to the entire prefix:**
+```ruby
+config = DVLA::Herodotus.config do |config|
+  config.prefix_colour = 'blue.bold'
+end
+logger = DVLA::Herodotus.logger('<system-name>', config: config)
+```
+
+**Use an array of colour methods:**
+```ruby
+config = DVLA::Herodotus.config do |config|
+  config.prefix_colour = ['blue', 'bold', 'underline']
+end
+logger = DVLA::Herodotus.logger('<system-name>', config: config)
+```
+
+**Apply different colours to individual components:**
+```ruby
+config = DVLA::Herodotus.config do |config|
+  config.prefix_colour = {
+    system: 'blue.bold',
+    date: 'green',
+    time: 'yellow',
+    correlation: 'magenta',
+    pid: 'cyan',
+    level: 'red.bold',
+    separator: 'white'
+  }
+end
+logger = DVLA::Herodotus.logger('<system-name>', config: config)
+```
+
+The hash keys correspond to different parts of the log prefix:
+- `system`: The system name
+- `date`: The date portion (YYYY-MM-DD)
+- `time`: The time portion (HH:MM:SS)
+- `correlation`: The correlation ID
+- `pid`: The process ID (when display_pid is enabled)
+- `level`: The log level (INFO, WARN, etc.)
+- `separator`: The "-- :" separator
+- `overall`: Applied to the entire prefix after individual components are coloured
+
 ### Syncing logs
 
 Herodotus allows you to Sync correlation_ids between instantiated HerodotusLogger objects. 
@@ -94,14 +139,14 @@ You can stack multiple method calls to add additional styling and use string int
 
 #### Available String Methods
 
-| Type | Examples |
-|------|----------|
-| Text Styles | **bold** <span style="opacity:0.6">dim</span> *italic* <u>underline</u> |
-| Colors | <span style="color:black">black</span> <span style="color:red">red</span> <span style="color:green">green</span> <span style="color:#B8860B">brown</span> <span style="color:#ffff00">yellow</span> <span style="color:blue">blue</span> <span style="color:magenta">magenta</span> <span style="color:cyan">cyan</span> <span style="color:grey">gray</span> <span style="color:white">white</span> |
-| Bright Colors | <span style="color:#ff5555">bright_red</span> <span style="color:#55ff55">bright_green</span> <span style="color:#5555ff">bright_blue</span> <span style="color:#ff55ff">bright_magenta</span> <span style="color:#55ffff">bright_cyan</span> |
-| Background Colors | <span style="background:black;color:white">bg_black</span> <span style="background:red;color:white">bg_red</span> <span style="background:green;color:white">bg_green</span> <span style="background:#B8860B;color:white">bg_brown</span> <span style="background:#ffff00;color:black">bg_yellow</span> <span style="background:blue;color:white">bg_blue</span> <span style="background:magenta;color:white">bg_magenta</span> <span style="background:cyan;color:black">bg_cyan</span> <span style="background:grey;color:white">bg_gray</span> <span style="background:white;color:black">bg_white</span> |
-| Bright Background Colors | <span style="background:#ff5555;color:white">bg_bright_red</span> <span style="background:#55ff55;color:black">bg_bright_green</span> <span style="background:#5555ff;color:white">bg_bright_blue</span> <span style="background:#ff55ff;color:white">bg_bright_magenta</span> <span style="background:#55ffff;color:black">bg_bright_cyan</span> |
-| Utility | strip_colour reverse_colour |
+| Type                      | Examples |
+|---------------------------|----------|
+| Text Styles               | **bold** <span style="opacity:0.6">dim</span> *italic* <u>underline</u> |
+| Colours                   | <span style="color:black">black</span> <span style="color:red">red</span> <span style="color:green">green</span> <span style="color:#B8860B">brown</span> <span style="color:#ffff00">yellow</span> <span style="color:blue">blue</span> <span style="color:magenta">magenta</span> <span style="color:cyan">cyan</span> <span style="color:grey">gray</span> <span style="color:white">white</span> |
+| Bright Colours            | <span style="color:#ff5555">bright_red</span> <span style="color:#55ff55">bright_green</span> <span style="color:#5555ff">bright_blue</span> <span style="color:#ff55ff">bright_magenta</span> <span style="color:#55ffff">bright_cyan</span> |
+| Background Colours        | <span style="background:black;color:white">bg_black</span> <span style="background:red;color:white">bg_red</span> <span style="background:green;color:white">bg_green</span> <span style="background:#B8860B;color:white">bg_brown</span> <span style="background:#ffff00;color:black">bg_yellow</span> <span style="background:blue;color:white">bg_blue</span> <span style="background:magenta;color:white">bg_magenta</span> <span style="background:cyan;color:black">bg_cyan</span> <span style="background:grey;color:white">bg_gray</span> <span style="background:white;color:black">bg_white</span> |
+| Bright Background Colours | <span style="background:#ff5555;color:white">bg_bright_red</span> <span style="background:#55ff55;color:black">bg_bright_green</span> <span style="background:#5555ff;color:white">bg_bright_blue</span> <span style="background:#ff55ff;color:white">bg_bright_magenta</span> <span style="background:#55ffff;color:black">bg_bright_cyan</span> |
+| Utility                   | strip_colour reverse_colour |
 
 #### To handle differences in spelling the following methods have been given aliases:
 | Alias         | Original       |

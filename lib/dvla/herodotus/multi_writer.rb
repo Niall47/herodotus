@@ -3,15 +3,16 @@ module DVLA
     class MultiWriter
       attr_reader :targets
 
-      def initialize(*targets)
+      def initialize(*targets, config: nil)
         @targets = *targets
+        @config = config
       end
 
       def write(*args)
         @targets.each do |target|
-          # If we're writing to a file we remove the colour
-          if target != $stdout && args[0].respond_to?(:strip_colour)
-            target.write(args[0].strip_colour, *args[1..])
+          if target != $stdout && (@config&.strip_colours_from_files != false)
+            stripped_content = args[0].to_s.strip_colour
+            target.write(stripped_content, *args[1..])
           else
             target.write(*args)
           end

@@ -154,4 +154,94 @@ RSpec.describe DVLA::Herodotus::HerodotusLogger do
       expect(logger2.scenario_id).to eq('blah')
     end
   end
+
+  context 'buffered logging' do
+    [
+      { method: :debug, string_value: 'DEBUG' },
+      { method: :info, string_value: 'INFO' },
+      { method: :warn, string_value: 'WARN' },
+      { method: :error, string_value: 'ERROR' },
+      { method: :fatal, string_value: 'FATAL' },
+    ].each do |testcase|
+      it "buffers #{testcase[:method]} logs when buffered: true" do
+        allow(Time).to receive(:now).and_return(Time.new(2022))
+        allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+        expect { logger.send(testcase[:method], 'Buffered Log', buffered: true) }
+          .not_to output.to_stdout_from_any_process
+      end
+
+      it "outputs #{testcase[:method]} logs immediately when buffered: false" do
+        allow(Time).to receive(:now).and_return(Time.new(2022))
+        allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+        expect { logger.send(testcase[:method], 'Immediate Log', buffered: false) }
+          .to output("[rspec 2022-01-01 00:00:00 123e4567] #{testcase[:string_value]} -- : Immediate Log\n")
+          .to_stdout_from_any_process
+      end
+
+      it "outputs #{testcase[:method]} logs immediately by default" do
+        allow(Time).to receive(:now).and_return(Time.new(2022))
+        allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+        expect { logger.send(testcase[:method], 'Default Log') }
+          .to output("[rspec 2022-01-01 00:00:00 123e4567] #{testcase[:string_value]} -- : Default Log\n")
+          .to_stdout_from_any_process
+      end
+    end
+
+    it 'releases all buffered logs in order when release_buffered_logs is called' do
+      allow(Time).to receive(:now).and_return(Time.new(2022))
+      allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+      logger.info('First buffered', buffered: true)
+      logger.warn('Second buffered', buffered: true)
+      logger.error('Third buffered', buffered: true)
+
+      expected_output = "[rspec 2022-01-01 00:00:00 123e4567] INFO -- : First buffered\n" +
+                       "[rspec 2022-01-01 00:00:00 123e4567] WARN -- : Second buffered\n" +
+                       "[rspec 2022-01-01 00:00:00 123e4567] ERROR -- : Third buffered\n"
+
+      expect { logger.release_buffered_logs }.to output(expected_output).to_stdout_from_any_process
+    end
+
+    it 'clears buffered logs after releasing them' do
+      logger.info('Buffered log', buffered: true)
+      logger.release_buffered_logs
+
+      expect { logger.release_buffered_logs }.not_to output.to_stdout_from_any_process
+    end
+
+    it 'handles blocks in buffered logs' do
+      allow(Time).to receive(:now).and_return(Time.new(2022))
+      allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+      logger.info(buffered: true) { 'Block message' }
+
+      expect { logger.release_buffered_logs }
+        .to output("[rspec 2022-01-01 00:00:00 123e4567] INFO -- : Block message\n")
+        .to_stdout_from_any_process
+    end
+
+    it 'mixes buffered and immediate logs correctly' do
+      allow(Time).to receive(:now).and_return(Time.new(2022))
+      allow(SecureRandom).to receive(:uuid).and_return('123e4567-e89b-12d3-a456-426614174000')
+
+      expect { logger.info('Immediate 1') }
+        .to output("[rspec 2022-01-01 00:00:00 123e4567] INFO -- : Immediate 1\n")
+        .to_stdout_from_any_process
+
+      logger.info('Buffered 1', buffered: true)
+      logger.info('Buffered 2', buffered: true)
+
+      expect { logger.info('Immediate 2') }
+        .to output("[rspec 2022-01-01 00:00:00 123e4567] INFO -- : Immediate 2\n")
+        .to_stdout_from_any_process
+
+      expected_buffered = "[rspec 2022-01-01 00:00:00 123e4567] INFO -- : Buffered 1\n" +
+                         "[rspec 2022-01-01 00:00:00 123e4567] INFO -- : Buffered 2\n"
+
+      expect { logger.release_buffered_logs }.to output(expected_buffered).to_stdout_from_any_process
+    end
+  end
 end

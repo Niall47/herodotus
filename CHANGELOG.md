@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2025-09-30
+- New config option to colour the log prefix, either the whole string or individual components
+- New config option to control if output files should retain colours
+- Optional argument to queue log messages then release later
+
 ## [2.2.1] - 2025-09-15
 - Fixed issue with ANSI exit codes breaking on string interpolation
 - Added strip_colour method to String which we now call when sending logs to file

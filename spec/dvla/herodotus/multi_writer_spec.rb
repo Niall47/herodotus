@@ -35,13 +35,55 @@ RSpec.describe DVLA::Herodotus::MultiWriter do
 
   it 'strips colours from messages when writing to non-stdout targets' do
     file_output = StringIO.new
-    coloured_message = 'test message'.red.underline.bg_blue
+    coloured_message = 'Test String'.red.underline.bg_blue
 
     allow($stdout).to receive(:write)
 
     multi_writer = DVLA::Herodotus::MultiWriter.new($stdout, file_output)
     multi_writer.write(coloured_message)
 
-    expect(file_output.string).to eq('test message')
+    expect(file_output.string).to eq('Test String')
+  end
+
+  it 'keeps colours when strip_colours_from_files is false' do
+    file_output = StringIO.new
+    coloured_message = 'Test String'.red
+    config = DVLA::Herodotus.config { |c| c.strip_colours_from_files = false }
+
+    allow($stdout).to receive(:write)
+
+    multi_writer = DVLA::Herodotus::MultiWriter.new($stdout, file_output, config: config)
+    multi_writer.write(coloured_message)
+
+    expect(file_output.string).to eq("\e[31mTest String\e[39m")
+  end
+
+  it 'strips colours when strip_colours_from_files is true' do
+    file_output = StringIO.new
+    coloured_message = 'Test String'.red
+    config = DVLA::Herodotus.config { |c| c.strip_colours_from_files = true }
+
+    allow($stdout).to receive(:write)
+
+    multi_writer = DVLA::Herodotus::MultiWriter.new($stdout, file_output, config: config)
+    multi_writer.write(coloured_message)
+
+    expect(file_output.string).to eq('Test String')
+  end
+
+  it 'strips colours from both prefix and message when strip_colours_from_files is true' do
+    file_output = StringIO.new
+    config = DVLA::Herodotus.config do |c|
+      c.strip_colours_from_files = true
+      c.prefix_colour = 'blue.bold'
+    end
+
+    allow($stdout).to receive(:write)
+
+    multi_writer = DVLA::Herodotus::MultiWriter.new($stdout, file_output, config: config)
+    logger = DVLA::Herodotus::HerodotusLogger.new('TestSystem', multi_writer, config: config)
+    logger.info 'Test String'.red
+
+    expect(file_output.string).to match(/\[TestSystem \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [a-f0-9]{8}\] INFO -- : Test String\n/)
   end
 end
