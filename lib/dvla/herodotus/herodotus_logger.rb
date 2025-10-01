@@ -5,9 +5,6 @@ module DVLA
   module Herodotus
     class HerodotusLogger < Logger
       attr_accessor :system_name, :correlation_id, :main, :display_pid, :scenario_id, :prefix_colour
-      
-      @@global_buffered_logs = []
-      @@buffer_mutex = Mutex.new
 
       # Initializes the logger
       # Sets a default correlation_id and creates the formatter
@@ -63,28 +60,10 @@ module DVLA
       end
 
       %i[debug info warn error fatal].each do |log_level|
-        define_method log_level do |progname = nil, buffered: false, &block|
-          if buffered
-            @@buffer_mutex.synchronize do
-              @@global_buffered_logs << -> {
-                set_proc_writer_scenario
-                super(progname, &block)
-              }
-            end
-          else
-            set_proc_writer_scenario
-            super(progname, &block)
-          end
+        define_method log_level do |progname = nil, &block|
+          set_proc_writer_scenario
+          super(progname, &block)
         end
-      end
-
-      def release_buffered_logs
-        logs_to_release = nil
-        @@buffer_mutex.synchronize do
-          logs_to_release = @@global_buffered_logs.dup
-          @@global_buffered_logs.clear
-        end
-        logs_to_release.each(&:call)
       end
 
       # Sets the format of the log.
